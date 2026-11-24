@@ -2,6 +2,12 @@
 import json
 import os
 
+PASS_MARK = 50
+HONOURS_MARK = 80
+
+# (minimum average, letter) checked from highest to lowest
+GRADE_THRESHOLDS = [(90, "A+"), (80, "A"), (70, "B"), (60, "C"), (50, "D")]
+
 
 class GradeBook:
     def __init__(self, course_code):
@@ -22,52 +28,38 @@ class GradeBook:
 
     def average(self, student_id):
         scores = self.students[student_id]["scores"]
-        total = 0
-        count = 0
-        for s in scores:
-            total = total + s
-            count = count + 1
-        return total / count
+        if not scores:
+            raise ValueError("Student has no scores recorded")
+        return sum(scores) / len(scores)
 
     def letter_grade(self, student_id):
         avg = self.average(student_id)
-        result = ""
-        if avg >= 90:
-            result = "A+"
-        else:
-            if avg >= 80:
-                result = "A"
-            else:
-                if avg >= 70:
-                    result = "B"
-                else:
-                    if avg >= 60:
-                        result = "C"
-                    else:
-                        if avg >= 50:
-                            result = "D"
-                        else:
-                            result = "F"
-        return result
+        for minimum, letter in GRADE_THRESHOLDS:
+            if avg >= minimum:
+                return letter
+        return "F"
+
+    def _student_average_or_zero(self, student_id):
+        if not self.students[student_id]["scores"]:
+            return 0
+        return self.average(student_id)
 
     def class_report(self, include_failing, sort_by_name, only_honours):
+        if only_honours:
+            minimum = HONOURS_MARK
+        elif include_failing:
+            minimum = 0
+        else:
+            minimum = PASS_MARK
+
         report = []
-        unused_counter = 0
         for sid, data in self.students.items():
-            if len(data["scores"]) > 0:
-                avg = self.average(sid)
-                if only_honours:
-                    if avg >= 80:
-                        report.append((sid, data["name"], avg))
-                else:
-                    if include_failing:
-                        report.append((sid, data["name"], avg))
-                    else:
-                        if avg >= 50:
-                            report.append((sid, data["name"], avg))
-            else:
-                if include_failing:
-                    report.append((sid, data["name"], 0))
+            if only_honours and not data["scores"]:
+                continue
+            avg = self._student_average_or_zero(sid)
+            if avg >= minimum:
+                report.append((sid, data["name"], avg))
+
         if sort_by_name:
             report.sort(key=lambda r: r[1])
         else:
@@ -75,16 +67,13 @@ class GradeBook:
         return report
 
     def save(self, path):
-        try:
-            with open(path, "w") as f:
-                json.dump({"course_code": self.course_code, "students": self.students}, f)
-        except:
-            pass
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"course_code": self.course_code, "students": self.students}, f)
 
     def load(self, path):
         if not os.path.exists(path):
             return False
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         self.course_code = data["course_code"]
         self.students = data["students"]
@@ -92,10 +81,5 @@ class GradeBook:
 
 
 def format_student_line(student_id, name, avg):
-    if avg >= 50:
-        status = "Student status: PASS"
-    else:
-        status = "Student status: FAIL"
-    if avg >= 80:
-        status = "Student status: PASS"
-    return f"{student_id} | {name} | {avg:.1f} | {status}"
+    status = "PASS" if avg >= PASS_MARK else "FAIL"
+    return f"{student_id} | {name} | {avg:.1f} | Student status: {status}"
